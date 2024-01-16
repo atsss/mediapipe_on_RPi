@@ -4,6 +4,7 @@ import time
 
 import cv2
 import mediapipe as mp
+from picamera2 import Picamera2
 
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
@@ -21,7 +22,7 @@ START_TIME = time.time()
 def run(model: str, num_hands: int,
         min_hand_detection_confidence: float,
         min_hand_presence_confidence: float, min_tracking_confidence: float,
-        camera_id: int, width: int, height: int) -> None:
+        width: int, height: int) -> None:
   """Continuously run inference on images acquired from the camera.
 
   Args:
@@ -39,9 +40,12 @@ def run(model: str, num_hands: int,
   """
 
   # Start capturing video input from the camera
-  cap = cv2.VideoCapture(camera_id)
-  cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-  cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+  picam2 = Picamera2()
+  picam2.preview_configuration.main.size = (width, height)
+  picam2.preview_configuration.main.format = "RGB888"
+  picam2.preview_configuration.align()
+  picam2.configure("preview")
+  picam2.start()
 
   # Visualization parameters
   row_size = 50  # pixels
@@ -83,12 +87,8 @@ def run(model: str, num_hands: int,
   recognizer = vision.GestureRecognizer.create_from_options(options)
 
   # Continuously capture images from the camera and run inference
-  while cap.isOpened():
-    success, image = cap.read()
-    if not success:
-      sys.exit(
-          'ERROR: Unable to read from webcam. Please verify your webcam settings.'
-      )
+  while True:
+    image = picam2.capture_array()
 
     image = cv2.flip(image, 1)
 
@@ -172,7 +172,6 @@ def run(model: str, num_hands: int,
         break
 
   recognizer.close()
-  cap.release()
   cv2.destroyAllWindows()
 
 
@@ -207,12 +206,6 @@ def main():
            'considered successful.',
       required=False,
       default=0.5)
-  # Finding the camera ID can be very reliant on platform-dependent methods.
-  # One common approach is to use the fact that camera IDs are usually indexed sequentially by the OS, starting from 0.
-  # Here, we use OpenCV and create a VideoCapture object for each potential ID with 'cap = cv2.VideoCapture(i)'.
-  # If 'cap' is None or not 'cap.isOpened()', it indicates the camera ID is not available.
-  parser.add_argument(
-      '--cameraId', help='Id of camera.', required=False, default=0)
   parser.add_argument(
       '--frameWidth',
       help='Width of frame to capture from camera.',
@@ -227,7 +220,7 @@ def main():
 
   run(args.model, int(args.numHands), args.minHandDetectionConfidence,
       args.minHandPresenceConfidence, args.minTrackingConfidence,
-      int(args.cameraId), args.frameWidth, args.frameHeight)
+      args.frameWidth, args.frameHeight)
 
 
 if __name__ == '__main__':
